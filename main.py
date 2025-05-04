@@ -4,6 +4,7 @@ import requests
 import re
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
+from datetime import datetime, timedelta
 
 try:
     from readability import Document
@@ -25,10 +26,15 @@ def perform_search(topic: str, date_range: str):
         "gl": "us",
         "num": 10
     }
+    
+    # Convert relative date ranges to specific dates
     if "day" in date_range or "days" in date_range:
         num = [int(s) for s in date_range.split() if s.isdigit()]
         days = num[0] if num else 1
-        params["as_qdr"] = f"d{days}"
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        # Format dates as YYYY-MM-DD
+        params["as_qdr"] = f"d{start_date.strftime('%Y-%m-%d')}..{end_date.strftime('%Y-%m-%d')}"
 
     res = requests.get("https://serpapi.com/search.json", params=params)
     data = res.json()
