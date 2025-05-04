@@ -127,7 +127,7 @@ async def get_news(
         search_results = perform_search(topic, date_range)
         return search_results
 
-    for step in range(30):
+    for step in range(50):
         res = requests.post(
             "https://api.openai.com/v1/responses",
             headers={
@@ -186,4 +186,4 @@ async def get_news(
             elif item["type"] == "message":
                 return {"summary": item["content"]}
 
-    return JSONResponse(status_code=500, content={"error": "Failed to generate summary after 30 steps."})
+    return JSONResponse(status_code=500, content={"error": "Failed to generate summary after 50 steps."})
