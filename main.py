@@ -17,24 +17,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 BROWSERLESS_API_KEY = os.getenv("BROWSERLESS_API_KEY")
 
-def perform_search(topic: str, date_range: str):
+def perform_search(topic: str, start_date: str, end_date: str):
     params = {
         "engine": "google",
         "q": topic,
         "api_key": SERP_API_KEY,
         "hl": "en",
         "gl": "us",
-        "num": 10
+        "num": 10,
+        "as_qdr": f"d{start_date}..{end_date}"  # Use exact date range
     }
-    
-    # Convert relative date ranges to specific dates
-    if "day" in date_range or "days" in date_range:
-        num = [int(s) for s in date_range.split() if s.isdigit()]
-        days = num[0] if num else 1
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        # Format dates as YYYY-MM-DD
-        params["as_qdr"] = f"d{start_date.strftime('%Y-%m-%d')}..{end_date.strftime('%Y-%m-%d')}"
 
     res = requests.get("https://serpapi.com/search.json", params=params)
     data = res.json()
@@ -105,7 +97,8 @@ tools = [
 @app.get("/news", response_class=JSONResponse)
 async def get_news(
     topic: str,
-    date_range: str = "past 2 days",
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False
 ):
@@ -118,12 +111,12 @@ async def get_news(
                 "with hyperlinks and summaries formatted for a newsletter writer."
             )
         },
-        {"role": "user", "content": f"Summarize recent news about {topic} from {date_range}."}
+        {"role": "user", "content": f"Summarize news about {topic} from {start_date} to {end_date}."}
     ]
 
     # If debug is True, return raw SERP results
     if debug:
-        search_results = perform_search(topic, date_range)
+        search_results = perform_search(topic, start_date, end_date)
         return search_results
 
     for step in range(30):
