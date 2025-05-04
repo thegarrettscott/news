@@ -13,14 +13,14 @@ except ModuleNotFoundError:
 app = FastAPI()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+SERP_API_KEY = os.getenv("SERP_API_KEY")
 BROWSERLESS_API_KEY = os.getenv("BROWSERLESS_API_KEY")
 
 def perform_search(topic: str, date_range: str):
     params = {
         "engine": "google",
         "q": topic,
-        "api_key": SERPAPI_API_KEY,
+        "api_key": SERP_API_KEY,
         "hl": "en",
         "gl": "us",
         "num": 10
