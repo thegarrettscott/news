@@ -36,8 +36,13 @@ def perform_search(topic: str, date_range: str):
     for item in data.get("organic_results", []):
         link = item.get("link")
         snippet = item.get("snippet") or item.get("title")
+        date = item.get("date")
         if link and snippet:
-            results.append({"link": link, "preview": snippet})
+            results.append({
+                "link": link, 
+                "preview": snippet,
+                "date": date
+            })
         if len(results) >= 5:
             break
     return {"results": results}
@@ -95,7 +100,8 @@ tools = [
 async def get_news(
     topic: str,
     date_range: str = "past 2 days",
-    effort: str = Query(default="medium", enum=["light", "medium", "high"])
+    effort: str = Query(default="medium", enum=["low", "medium", "high"]),
+    debug: bool = False
 ):
     input_messages = [
         {
@@ -108,6 +114,11 @@ async def get_news(
         },
         {"role": "user", "content": f"Summarize recent news about {topic} from {date_range}."}
     ]
+
+    # If debug is True, return raw SERP results
+    if debug:
+        search_results = perform_search(topic, date_range)
+        return search_results
 
     for step in range(30):
         res = requests.post(
