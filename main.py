@@ -3,7 +3,8 @@ import json
 import requests
 import re
 from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+import asyncio
 
 try:
     from readability import Document
@@ -127,63 +128,108 @@ async def get_news(
         search_results = perform_search(topic, date_range)
         return search_results
 
-    for step in range(30):
-        res = requests.post(
-            "https://api.openai.com/v1/responses",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "o3",
-                "input": input_messages,
-                "tools": tools,
-                "reasoning": {"effort": effort},
-                "tool_choice": "auto"
-            }
-        )
-
-        if res.status_code != 200:
-            return JSONResponse(status_code=500, content={
-                "error": {
-                    "code": res.status_code,
-                    "message": res.text
+    async def generate_steps():
+        all_steps = []
+        for step in range(30):
+            res = requests.post(
+                "https://api.openai.com/v1/responses",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "o3",
+                    "input": input_messages,
+                    "tools": tools,
+                    "reasoning": {"effort": effort},
+                    "tool_choice": "auto"
                 }
-            })
+            )
 
-        data = res.json()
-        outputs = data.get("output", [])
-        for item in outputs:
-            if item["type"] == "reasoning":
-                input_messages.append({
-                    "type": "reasoning",
-                    "id": item["id"],
-                    "summary": item.get("summary", [])
-                })
+            if res.status_code != 200:
+                yield json.dumps({
+                    "error": {
+                        "code": res.status_code,
+                        "message": res.text
+                    }
+                }) + "\n"
+                return
 
-            elif item["type"] == "function_call":
-                args = json.loads(item["arguments"])
-                result = (
-                    perform_search(**args)
-                    if item["name"] == "search_news"
-                    else scrape_content(**args)
-                )
+            data = res.json()
+            outputs = data.get("output", [])
+            for item in outputs:
+                if item["type"] == "reasoning":
+                    input_messages.append({
+                        "type": "reasoning",
+                        "id": item["id"],
+                        "summary": item.get("summary", [])
+                    })
+                    if debug:
+                        step_data = {
+                            "type": "reasoning",
+                            "content": item.get("summary", [])
+                        }
+                        all_steps.append(step_data)
+                        yield json.dumps(step_data) + "\n"
 
-                input_messages.append({
-                    "type": "function_call",
-                    "id": item["id"],
-                    "call_id": item["call_id"],
-                    "name": item["name"],
-                    "arguments": item["arguments"]
-                })
+                elif item["type"] == "function_call":
+                    args = json.loads(item["arguments"])
+                    result = (
+                        perform_search(**args)
+                        if item["name"] == "search_news"
+                        else scrape_content(**args)
+                    )
 
-                input_messages.append({
-                    "type": "function_call_output",
-                    "call_id": item["call_id"],
-                    "output": json.dumps(result)
-                })
+                    input_messages.append({
+                        "type": "function_call",
+                        "id": item["id"],
+                        "call_id": item["call_id"],
+                        "name": item["name"],
+                        "arguments": item["arguments"]
+                    })
 
-            elif item["type"] == "message":
-                return {"summary": item["content"]}
+                    input_messages.append({
+                        "type": "function_call_output",
+                        "call_id": item["call_id"],
+                        "output": json.dumps(result)
+                    })
 
+                    if debug:
+                        step_data = {
+                            "type": "function_call",
+                            "name": item["name"],
+                            "arguments": args,
+                            "result": result
+                        }
+                        all_steps.append(step_data)
+                        yield json.dumps(step_data) + "\n"
+
+                elif item["type"] == "message":
+                    if debug:
+                        step_data = {
+                            "type": "final_message",
+                            "content": item["content"]
+                        }
+                        all_steps.append(step_data)
+                        yield json.dumps(step_data) + "\n"
+                        return
+                    return {"summary": item["content"]}
+
+            await asyncio.sleep(0.1)  # Small delay between steps
+
+        yield json.dumps({"error": "Failed to generate summary after 30 steps."}) + "\n"
+
+    if debug:
+        return StreamingResponse(
+            generate_steps(),
+            media_type="application/x-ndjson"
+        )
+    
+    # For non-debug mode, collect all steps and return final result
+    all_steps = []
+    async for step in generate_steps():
+        all_steps.append(json.loads(step))
+        if step.get("type") == "final_message":
+            return {"summary": step["content"]}
+    
     return JSONResponse(status_code=500, content={"error": "Failed to generate summary after 30 steps."})
