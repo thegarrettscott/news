@@ -101,7 +101,8 @@ async def get_news(
     topic: str,
     date_range: str = "past 2 days",
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
-    debug: bool = False
+    debug: bool = False,
+    previous_summary: str = None
 ):
     input_messages = [
         {
@@ -111,9 +112,15 @@ async def get_news(
                 "Use tools to search and scrape the web. Return a long, detailed report "
                 "with hyperlinks and summaries formatted for a newsletter writer."
             )
-        },
-        {"role": "user", "content": f"Summarize recent news about {topic} from {date_range}."}
+        }
     ]
+
+    # Construct user message with optional previous summary
+    user_message = f"Summarize recent news about {topic} from {date_range}."
+    if previous_summary:
+        user_message += f"\n\nHere is yesterday's newsletter summary for reference. Please ensure today's summary excludes these stories already covered:\n\n{previous_summary}"
+
+    input_messages.append({"role": "user", "content": user_message})
 
     # If debug is True, return raw SERP results
     if debug:
