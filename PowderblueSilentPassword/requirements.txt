@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-requests
-readability-lxml
-beautifulsoup4
-bs4
-passlib[bcrypt]
-python-jose[cryptography]
-python-multipart
