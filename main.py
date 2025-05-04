@@ -222,7 +222,12 @@ async def get_news(
     if debug:
         return StreamingResponse(
             generate_steps(),
-            media_type="application/x-ndjson"
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
         )
     
     # For non-debug mode, collect all steps and return final result
