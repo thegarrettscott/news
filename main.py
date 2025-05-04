@@ -129,6 +129,9 @@ async def get_news(
         return search_results
 
     async def generate_steps():
+        # Send initial debug info
+        yield json.dumps({"type": "debug", "message": "Starting search process"}) + "\n"
+        
         all_steps = []
         for step in range(30):
             res = requests.post(
@@ -148,15 +151,21 @@ async def get_news(
 
             if res.status_code != 200:
                 yield json.dumps({
-                    "error": {
-                        "code": res.status_code,
-                        "message": res.text
-                    }
+                    "type": "error",
+                    "code": res.status_code,
+                    "message": res.text
                 }) + "\n"
                 return
 
             data = res.json()
             outputs = data.get("output", [])
+            
+            # Send debug info about number of outputs
+            yield json.dumps({
+                "type": "debug",
+                "message": f"Processing {len(outputs)} outputs"
+            }) + "\n"
+            
             for item in outputs:
                 if item["type"] == "reasoning":
                     input_messages.append({
@@ -217,7 +226,7 @@ async def get_news(
 
             await asyncio.sleep(0.1)  # Small delay between steps
 
-        yield json.dumps({"error": "Failed to generate summary after 30 steps."}) + "\n"
+        yield json.dumps({"type": "error", "message": "Failed to generate summary after 30 steps."}) + "\n"
 
     if debug:
         return StreamingResponse(
@@ -226,7 +235,8 @@ async def get_news(
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
+                "X-Accel-Buffering": "no",
+                "Transfer-Encoding": "chunked"
             }
         )
     
