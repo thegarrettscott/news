@@ -4,7 +4,6 @@ import requests
 import re
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
-from datetime import datetime, timedelta
 
 try:
     from readability import Document
@@ -17,16 +16,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 BROWSERLESS_API_KEY = os.getenv("BROWSERLESS_API_KEY")
 
-def perform_search(topic: str, start_date: str, end_date: str):
+def perform_search(topic: str, date_range: str):
     params = {
         "engine": "google",
         "q": topic,
         "api_key": SERP_API_KEY,
         "hl": "en",
         "gl": "us",
-        "num": 10,
-        "as_qdr": f"d{start_date}..{end_date}"  # Use exact date range
+        "num": 10
     }
+    if "day" in date_range or "days" in date_range:
+        num = [int(s) for s in date_range.split() if s.isdigit()]
+        days = num[0] if num else 1
+        params["as_qdr"] = f"d{days}"
 
     res = requests.get("https://serpapi.com/search.json", params=params)
     data = res.json()
@@ -97,8 +99,7 @@ tools = [
 @app.get("/news", response_class=JSONResponse)
 async def get_news(
     topic: str,
-    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
-    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    date_range: str = "past 2 days",
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False
 ):
@@ -111,12 +112,12 @@ async def get_news(
                 "with hyperlinks and summaries formatted for a newsletter writer."
             )
         },
-        {"role": "user", "content": f"Summarize news about {topic} from {start_date} to {end_date}."}
+        {"role": "user", "content": f"Summarize recent news about {topic} from {date_range}."}
     ]
 
     # If debug is True, return raw SERP results
     if debug:
-        search_results = perform_search(topic, start_date, end_date)
+        search_results = perform_search(topic, date_range)
         return search_results
 
     for step in range(30):
