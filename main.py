@@ -102,8 +102,14 @@ async def get_news(
     date_range: str = "past 2 days",
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False,
-    previous_summary: str = None
+    previous_summary: str = None,
+    max_steps: int = Query(default=100, ge=1, le=100)
 ):
+    # Cost calculation parameters
+    INPUT_COST_PER_MILLION = 10.00  # $10.00 per 1M tokens for input
+    CACHED_COST_PER_MILLION = 2.50  # $2.50 per 1M tokens for cached input
+    OUTPUT_COST_PER_MILLION = 40.00  # $40.00 per 1M tokens for output
+    
     input_messages = [
         {
             "role": "system",
@@ -129,8 +135,13 @@ async def get_news(
 
     # Store scraped articles
     scraped_articles = []
+    
+    # Cost tracking
+    total_input_tokens = 0
+    total_output_tokens = 0
+    cached_input_tokens = 0
 
-    for step in range(50):
+    for step in range(max_steps):
         res = requests.post(
             "https://api.openai.com/v1/responses",
             headers={
@@ -155,6 +166,14 @@ async def get_news(
             })
 
         data = res.json()
+        
+        # Track token usage
+        if "usage" in data:
+            total_input_tokens += data["usage"].get("prompt_tokens", 0)
+            total_output_tokens += data["usage"].get("completion_tokens", 0)
+            if step > 0:  # Consider subsequent steps as cached
+                cached_input_tokens += data["usage"].get("prompt_tokens", 0)
+
         outputs = data.get("output", [])
         for item in outputs:
             if item["type"] == "reasoning":
@@ -191,9 +210,24 @@ async def get_news(
                 })
 
             elif item["type"] == "message":
+                # Calculate costs
+                input_cost = (total_input_tokens - cached_input_tokens) * (INPUT_COST_PER_MILLION / 1_000_000)
+                cached_cost = cached_input_tokens * (CACHED_COST_PER_MILLION / 1_000_000)
+                output_cost = total_output_tokens * (OUTPUT_COST_PER_MILLION / 1_000_000)
+                total_cost = input_cost + cached_cost + output_cost
+
                 return {
                     "summary": item["content"],
-                    "articles": scraped_articles
+                    "articles": scraped_articles,
+                    "cost_breakdown": {
+                        "input_tokens": total_input_tokens - cached_input_tokens,
+                        "cached_input_tokens": cached_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "input_cost": round(input_cost, 4),
+                        "cached_cost": round(cached_cost, 4),
+                        "output_cost": round(output_cost, 4),
+                        "total_cost": round(total_cost, 4)
+                    }
                 }
 
-    return JSONResponse(status_code=500, content={"error": "Failed to generate summary after 50 steps."})
+    return JSONResponse(status_code=500, content={"error": f"Failed to generate summary after {max_steps} steps."})
