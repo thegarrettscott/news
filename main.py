@@ -127,6 +127,9 @@ async def get_news(
         search_results = perform_search(topic, date_range)
         return search_results
 
+    # Store scraped articles
+    scraped_articles = []
+
     for step in range(50):
         res = requests.post(
             "https://api.openai.com/v1/responses",
@@ -169,6 +172,10 @@ async def get_news(
                     else scrape_content(**args)
                 )
 
+                # Store scraped articles
+                if item["name"] == "fetch_content":
+                    scraped_articles.append(result)
+
                 input_messages.append({
                     "type": "function_call",
                     "id": item["id"],
@@ -184,6 +191,9 @@ async def get_news(
                 })
 
             elif item["type"] == "message":
-                return {"summary": item["content"]}
+                return {
+                    "summary": item["content"],
+                    "articles": scraped_articles
+                }
 
     return JSONResponse(status_code=500, content={"error": "Failed to generate summary after 50 steps."})
