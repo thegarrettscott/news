@@ -167,12 +167,18 @@ async def get_news(
 
         data = res.json()
         
-        # Track token usage
+        # Track token usage from the response
         if "usage" in data:
-            total_input_tokens += data["usage"].get("prompt_tokens", 0)
-            total_output_tokens += data["usage"].get("completion_tokens", 0)
-            if step > 0:  # Consider subsequent steps as cached
-                cached_input_tokens += data["usage"].get("prompt_tokens", 0)
+            usage = data["usage"]
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            
+            if step == 0:
+                total_input_tokens += prompt_tokens
+            else:
+                cached_input_tokens += prompt_tokens
+                
+            total_output_tokens += completion_tokens
 
         outputs = data.get("output", [])
         for item in outputs:
@@ -211,7 +217,7 @@ async def get_news(
 
             elif item["type"] == "message":
                 # Calculate costs
-                input_cost = (total_input_tokens - cached_input_tokens) * (INPUT_COST_PER_MILLION / 1_000_000)
+                input_cost = total_input_tokens * (INPUT_COST_PER_MILLION / 1_000_000)
                 cached_cost = cached_input_tokens * (CACHED_COST_PER_MILLION / 1_000_000)
                 output_cost = total_output_tokens * (OUTPUT_COST_PER_MILLION / 1_000_000)
                 total_cost = input_cost + cached_cost + output_cost
@@ -220,7 +226,7 @@ async def get_news(
                     "summary": item["content"],
                     "articles": scraped_articles,
                     "cost_breakdown": {
-                        "input_tokens": total_input_tokens - cached_input_tokens,
+                        "input_tokens": total_input_tokens,
                         "cached_input_tokens": cached_input_tokens,
                         "output_tokens": total_output_tokens,
                         "input_cost": round(input_cost, 4),
