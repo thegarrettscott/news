@@ -157,20 +157,12 @@ async def get_news(
             }
         )
         
-        if res.status_code != 200:
-            return JSONResponse(status_code=500, content={
-                "error": {
-                    "code": res.status_code,
-                    "message": res.text
-                }
-            })
-            
-        # Debug logging for raw response
-        print("Raw API Response:", res.text)
         print("Response Status Code:", res.status_code)
-        print("Response Headers:", res.headers)
+        print("Response Headers:", dict(res.headers))
+        print("Raw Response Text:", res.text)
         
         data = res.json()
+        print("Parsed Response Data:", json.dumps(data, indent=2))
         
         # Extract token usage from the API response
         token_usage = {
@@ -179,10 +171,24 @@ async def get_news(
             "cached_input_tokens": 0
         }
         
+        # Check various possible locations for token usage data
         if "usage" in data:
+            print("Found usage in data root")
             token_usage["input_tokens"] = data["usage"].get("prompt_tokens", 0)
             token_usage["output_tokens"] = data["usage"].get("completion_tokens", 0)
             token_usage["cached_input_tokens"] = data["usage"].get("cached_tokens", 0)
+        elif "metadata" in data and "usage" in data["metadata"]:
+            print("Found usage in metadata")
+            token_usage["input_tokens"] = data["metadata"]["usage"].get("prompt_tokens", 0)
+            token_usage["output_tokens"] = data["metadata"]["usage"].get("completion_tokens", 0)
+            token_usage["cached_input_tokens"] = data["metadata"]["usage"].get("cached_tokens", 0)
+        elif "metadata" in data and "token_usage" in data["metadata"]:
+            print("Found token_usage in metadata")
+            token_usage["input_tokens"] = data["metadata"]["token_usage"].get("prompt_tokens", 0)
+            token_usage["output_tokens"] = data["metadata"]["token_usage"].get("completion_tokens", 0)
+            token_usage["cached_input_tokens"] = data["metadata"]["token_usage"].get("cached_tokens", 0)
+        
+        print("Token Usage:", token_usage)
         
         # Calculate costs based on token usage
         input_cost = token_usage["input_tokens"] * 0.01 / 1000  # $0.01 per 1K tokens
@@ -199,6 +205,8 @@ async def get_news(
             "cached_cost": round(cached_cost, 6),
             "total_cost": round(total_cost, 6)
         }
+        
+        print("Cost Breakdown:", cost_breakdown)
         
         # Debug logging for entire response structure
         print(f"Step {step} full response data:", json.dumps(data, indent=2))
