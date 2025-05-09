@@ -156,7 +156,7 @@ async def get_news(
                 "tool_choice": "auto"
             }
         )
-
+        
         if res.status_code != 200:
             return JSONResponse(status_code=500, content={
                 "error": {
@@ -164,7 +164,12 @@ async def get_news(
                     "message": res.text
                 }
             })
-
+            
+        # Debug logging for raw response
+        print("Raw API Response:", res.text)
+        print("Response Status Code:", res.status_code)
+        print("Response Headers:", res.headers)
+        
         data = res.json()
         
         # Debug logging for entire response structure
