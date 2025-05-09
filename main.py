@@ -180,57 +180,60 @@ async def get_news(
                 
             total_output_tokens += completion_tokens
 
-        # Get the response content
-        choice = data["choices"][0]
-        message = choice.get("message", {})
-        
-        if "tool_calls" in message:
-            tool_calls = message["tool_calls"]
-            for tool_call in tool_calls:
-                function = tool_call["function"]
-                args = json.loads(function["arguments"])
+        outputs = data.get("output", [])
+        for item in outputs:
+            if item["type"] == "reasoning":
+                input_messages.append({
+                    "type": "reasoning",
+                    "id": item["id"],
+                    "summary": item.get("summary", [])
+                })
+
+            elif item["type"] == "function_call":
+                args = json.loads(item["arguments"])
                 result = (
                     perform_search(**args)
-                    if function["name"] == "search_news"
+                    if item["name"] == "search_news"
                     else scrape_content(**args)
                 )
 
                 # Store scraped articles
-                if function["name"] == "fetch_content":
+                if item["name"] == "fetch_content":
                     scraped_articles.append(result)
 
                 input_messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [tool_call]
+                    "type": "function_call",
+                    "id": item["id"],
+                    "call_id": item["call_id"],
+                    "name": item["name"],
+                    "arguments": item["arguments"]
                 })
 
                 input_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "name": function["name"],
-                    "content": json.dumps(result)
+                    "type": "function_call_output",
+                    "call_id": item["call_id"],
+                    "output": json.dumps(result)
                 })
 
-        elif "content" in message:
-            # Calculate costs
-            input_cost = total_input_tokens * (INPUT_COST_PER_MILLION / 1_000_000)
-            cached_cost = cached_input_tokens * (CACHED_COST_PER_MILLION / 1_000_000)
-            output_cost = total_output_tokens * (OUTPUT_COST_PER_MILLION / 1_000_000)
-            total_cost = input_cost + cached_cost + output_cost
+            elif item["type"] == "message":
+                # Calculate costs
+                input_cost = total_input_tokens * (INPUT_COST_PER_MILLION / 1_000_000)
+                cached_cost = cached_input_tokens * (CACHED_COST_PER_MILLION / 1_000_000)
+                output_cost = total_output_tokens * (OUTPUT_COST_PER_MILLION / 1_000_000)
+                total_cost = input_cost + cached_cost + output_cost
 
-            return {
-                "summary": message["content"],
-                "articles": scraped_articles,
-                "cost_breakdown": {
-                    "input_tokens": total_input_tokens,
-                    "cached_input_tokens": cached_input_tokens,
-                    "output_tokens": total_output_tokens,
-                    "input_cost": round(input_cost, 4),
-                    "cached_cost": round(cached_cost, 4),
-                    "output_cost": round(output_cost, 4),
-                    "total_cost": round(total_cost, 4)
+                return {
+                    "summary": item["content"],
+                    "articles": scraped_articles,
+                    "cost_breakdown": {
+                        "input_tokens": total_input_tokens,
+                        "cached_input_tokens": cached_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "input_cost": round(input_cost, 4),
+                        "cached_cost": round(cached_cost, 4),
+                        "output_cost": round(output_cost, 4),
+                        "total_cost": round(total_cost, 4)
+                    }
                 }
-            }
 
     return JSONResponse(status_code=500, content={"error": f"Failed to generate summary after {max_steps} steps."})
