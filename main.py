@@ -167,11 +167,42 @@ async def get_news(
 
         data = res.json()
         
+        # Debug logging for token usage
+        print(f"Step {step} response data keys:", data.keys())
+        if "usage" in data:
+            print(f"Usage data: {data['usage']}")
+        elif "token_usage" in data:
+            print(f"Token usage data: {data['token_usage']}")
+        elif "tokens" in data:
+            print(f"Tokens data: {data['tokens']}")
+        
         # Track token usage from the response
         if "usage" in data:
             usage = data["usage"]
             prompt_tokens = usage.get("prompt_tokens", 0)
             completion_tokens = usage.get("completion_tokens", 0)
+            
+            if step == 0:
+                total_input_tokens += prompt_tokens
+            else:
+                cached_input_tokens += prompt_tokens
+                
+            total_output_tokens += completion_tokens
+        elif "token_usage" in data:  # Alternative token usage field
+            usage = data["token_usage"]
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            
+            if step == 0:
+                total_input_tokens += prompt_tokens
+            else:
+                cached_input_tokens += prompt_tokens
+                
+            total_output_tokens += completion_tokens
+        elif "tokens" in data:  # Another possible token usage field
+            tokens = data["tokens"]
+            prompt_tokens = tokens.get("prompt", 0)
+            completion_tokens = tokens.get("completion", 0)
             
             if step == 0:
                 total_input_tokens += prompt_tokens
