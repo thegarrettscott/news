@@ -172,66 +172,37 @@ async def get_news(
         
         data = res.json()
         
+        # Extract token usage from the API response
+        token_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0
+        }
+        
+        if "usage" in data:
+            token_usage["input_tokens"] = data["usage"].get("prompt_tokens", 0)
+            token_usage["output_tokens"] = data["usage"].get("completion_tokens", 0)
+            token_usage["cached_input_tokens"] = data["usage"].get("cached_tokens", 0)
+        
+        # Calculate costs based on token usage
+        input_cost = token_usage["input_tokens"] * 0.01 / 1000  # $0.01 per 1K tokens
+        output_cost = token_usage["output_tokens"] * 0.03 / 1000  # $0.03 per 1K tokens
+        cached_cost = token_usage["cached_input_tokens"] * 0.01 / 1000  # $0.01 per 1K tokens
+        total_cost = input_cost + output_cost + cached_cost
+        
+        cost_breakdown = {
+            "input_tokens": token_usage["input_tokens"],
+            "output_tokens": token_usage["output_tokens"],
+            "cached_input_tokens": token_usage["cached_input_tokens"],
+            "input_cost": round(input_cost, 6),
+            "output_cost": round(output_cost, 6),
+            "cached_cost": round(cached_cost, 6),
+            "total_cost": round(total_cost, 6)
+        }
+        
         # Debug logging for entire response structure
         print(f"Step {step} full response data:", json.dumps(data, indent=2))
         
-        # Track token usage from the response
-        if "usage" in data:
-            usage = data["usage"]
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-            
-            if step == 0:
-                total_input_tokens += prompt_tokens
-            else:
-                cached_input_tokens += prompt_tokens
-                
-            total_output_tokens += completion_tokens
-        elif "token_usage" in data:
-            usage = data["token_usage"]
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-            
-            if step == 0:
-                total_input_tokens += prompt_tokens
-            else:
-                cached_input_tokens += prompt_tokens
-                
-            total_output_tokens += completion_tokens
-        elif "tokens" in data:
-            tokens = data["tokens"]
-            prompt_tokens = tokens.get("prompt", 0)
-            completion_tokens = tokens.get("completion", 0)
-            
-            if step == 0:
-                total_input_tokens += prompt_tokens
-            else:
-                cached_input_tokens += prompt_tokens
-                
-            total_output_tokens += completion_tokens
-        elif "metadata" in data and "usage" in data["metadata"]:
-            usage = data["metadata"]["usage"]
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-            
-            if step == 0:
-                total_input_tokens += prompt_tokens
-            else:
-                cached_input_tokens += prompt_tokens
-                
-            total_output_tokens += completion_tokens
-        elif "metadata" in data and "token_usage" in data["metadata"]:
-            usage = data["metadata"]["token_usage"]
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-            
-            if step == 0:
-                total_input_tokens += prompt_tokens
-            else:
-                cached_input_tokens += prompt_tokens
-                
-            total_output_tokens += completion_tokens
-
         outputs = data.get("output", [])
         for item in outputs:
             if item["type"] == "reasoning":
@@ -268,24 +239,10 @@ async def get_news(
                 })
 
             elif item["type"] == "message":
-                # Calculate costs
-                input_cost = total_input_tokens * (INPUT_COST_PER_MILLION / 1_000_000)
-                cached_cost = cached_input_tokens * (CACHED_COST_PER_MILLION / 1_000_000)
-                output_cost = total_output_tokens * (OUTPUT_COST_PER_MILLION / 1_000_000)
-                total_cost = input_cost + cached_cost + output_cost
-
                 return {
                     "summary": item["content"],
                     "articles": scraped_articles,
-                    "cost_breakdown": {
-                        "input_tokens": total_input_tokens,
-                        "cached_input_tokens": cached_input_tokens,
-                        "output_tokens": total_output_tokens,
-                        "input_cost": round(input_cost, 4),
-                        "cached_cost": round(cached_cost, 4),
-                        "output_cost": round(output_cost, 4),
-                        "total_cost": round(total_cost, 4)
-                    }
+                    "cost_breakdown": cost_breakdown
                 }
 
     return JSONResponse(status_code=500, content={"error": f"Failed to generate summary after {max_steps} steps."})
