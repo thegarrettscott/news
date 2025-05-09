@@ -136,10 +136,10 @@ async def get_news(
     # Store scraped articles
     scraped_articles = []
     
-    # Cost tracking
+    # Initialize token tracking variables at the start of the function
     total_input_tokens = 0
     total_output_tokens = 0
-    cached_input_tokens = 0
+    total_cached_tokens = 0
 
     for step in range(max_steps):
         res = requests.post(
@@ -162,51 +162,50 @@ async def get_news(
         print("Raw Response Text:", res.text)
         
         data = res.json()
-        print("Parsed Response Data:", json.dumps(data, indent=2))
+        print("Step", step, "Response Data:", json.dumps(data, indent=2))
         
         # Extract token usage from the API response
-        token_usage = {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cached_input_tokens": 0
-        }
-        
-        # Check various possible locations for token usage data
         if "usage" in data:
             print("Found usage in data root")
-            token_usage["input_tokens"] = data["usage"].get("prompt_tokens", 0)
-            token_usage["output_tokens"] = data["usage"].get("completion_tokens", 0)
-            token_usage["cached_input_tokens"] = data["usage"].get("cached_tokens", 0)
+            if step == 0:
+                total_input_tokens += data["usage"].get("prompt_tokens", 0)
+            else:
+                total_cached_tokens += data["usage"].get("prompt_tokens", 0)
+            total_output_tokens += data["usage"].get("completion_tokens", 0)
         elif "metadata" in data and "usage" in data["metadata"]:
             print("Found usage in metadata")
-            token_usage["input_tokens"] = data["metadata"]["usage"].get("prompt_tokens", 0)
-            token_usage["output_tokens"] = data["metadata"]["usage"].get("completion_tokens", 0)
-            token_usage["cached_input_tokens"] = data["metadata"]["usage"].get("cached_tokens", 0)
+            if step == 0:
+                total_input_tokens += data["metadata"]["usage"].get("prompt_tokens", 0)
+            else:
+                total_cached_tokens += data["metadata"]["usage"].get("prompt_tokens", 0)
+            total_output_tokens += data["metadata"]["usage"].get("completion_tokens", 0)
         elif "metadata" in data and "token_usage" in data["metadata"]:
             print("Found token_usage in metadata")
-            token_usage["input_tokens"] = data["metadata"]["token_usage"].get("prompt_tokens", 0)
-            token_usage["output_tokens"] = data["metadata"]["token_usage"].get("completion_tokens", 0)
-            token_usage["cached_input_tokens"] = data["metadata"]["token_usage"].get("cached_tokens", 0)
+            if step == 0:
+                total_input_tokens += data["metadata"]["token_usage"].get("prompt_tokens", 0)
+            else:
+                total_cached_tokens += data["metadata"]["token_usage"].get("prompt_tokens", 0)
+            total_output_tokens += data["metadata"]["token_usage"].get("completion_tokens", 0)
         
-        print("Token Usage:", token_usage)
+        print("Step", step, "Token Usage - Input:", total_input_tokens, "Output:", total_output_tokens, "Cached:", total_cached_tokens)
         
-        # Calculate costs based on token usage
-        input_cost = token_usage["input_tokens"] * 0.01 / 1000  # $0.01 per 1K tokens
-        output_cost = token_usage["output_tokens"] * 0.03 / 1000  # $0.03 per 1K tokens
-        cached_cost = token_usage["cached_input_tokens"] * 0.01 / 1000  # $0.01 per 1K tokens
+        # Calculate final costs
+        input_cost = total_input_tokens * 0.01 / 1000  # $0.01 per 1K tokens
+        output_cost = total_output_tokens * 0.03 / 1000  # $0.03 per 1K tokens
+        cached_cost = total_cached_tokens * 0.01 / 1000  # $0.01 per 1K tokens
         total_cost = input_cost + output_cost + cached_cost
         
         cost_breakdown = {
-            "input_tokens": token_usage["input_tokens"],
-            "output_tokens": token_usage["output_tokens"],
-            "cached_input_tokens": token_usage["cached_input_tokens"],
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "cached_input_tokens": total_cached_tokens,
             "input_cost": round(input_cost, 6),
             "output_cost": round(output_cost, 6),
             "cached_cost": round(cached_cost, 6),
             "total_cost": round(total_cost, 6)
         }
         
-        print("Cost Breakdown:", cost_breakdown)
+        print("Final Cost Breakdown:", cost_breakdown)
         
         # Debug logging for entire response structure
         print(f"Step {step} full response data:", json.dumps(data, indent=2))
