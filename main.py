@@ -167,14 +167,8 @@ async def get_news(
 
         data = res.json()
         
-        # Debug logging for token usage
-        print(f"Step {step} response data keys:", data.keys())
-        if "usage" in data:
-            print(f"Usage data: {data['usage']}")
-        elif "token_usage" in data:
-            print(f"Token usage data: {data['token_usage']}")
-        elif "tokens" in data:
-            print(f"Tokens data: {data['tokens']}")
+        # Debug logging for entire response structure
+        print(f"Step {step} full response data:", json.dumps(data, indent=2))
         
         # Track token usage from the response
         if "usage" in data:
