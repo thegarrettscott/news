@@ -182,7 +182,7 @@ async def get_news(
                 cached_input_tokens += prompt_tokens
                 
             total_output_tokens += completion_tokens
-        elif "token_usage" in data:  # Alternative token usage field
+        elif "token_usage" in data:
             usage = data["token_usage"]
             prompt_tokens = usage.get("prompt_tokens", 0)
             completion_tokens = usage.get("completion_tokens", 0)
@@ -193,10 +193,32 @@ async def get_news(
                 cached_input_tokens += prompt_tokens
                 
             total_output_tokens += completion_tokens
-        elif "tokens" in data:  # Another possible token usage field
+        elif "tokens" in data:
             tokens = data["tokens"]
             prompt_tokens = tokens.get("prompt", 0)
             completion_tokens = tokens.get("completion", 0)
+            
+            if step == 0:
+                total_input_tokens += prompt_tokens
+            else:
+                cached_input_tokens += prompt_tokens
+                
+            total_output_tokens += completion_tokens
+        elif "metadata" in data and "usage" in data["metadata"]:
+            usage = data["metadata"]["usage"]
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            
+            if step == 0:
+                total_input_tokens += prompt_tokens
+            else:
+                cached_input_tokens += prompt_tokens
+                
+            total_output_tokens += completion_tokens
+        elif "metadata" in data and "token_usage" in data["metadata"]:
+            usage = data["metadata"]["token_usage"]
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
             
             if step == 0:
                 total_input_tokens += prompt_tokens
