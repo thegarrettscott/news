@@ -151,7 +151,7 @@ async def get_news(
     debug: bool = False,
     previous_summary: str = None,
     max_steps: int = Query(default=100, ge=1, le=100),
-    model: str = Query(default="o3", description="The model to use for generating responses")
+    model: str = Query(default="o4-mini", description="The model to use for generating responses")
 ):
     input_messages = [
         {
