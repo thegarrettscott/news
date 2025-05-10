@@ -150,7 +150,8 @@ async def get_news(
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False,
     previous_summary: str = None,
-    max_steps: int = Query(default=100, ge=1, le=100)
+    max_steps: int = Query(default=100, ge=1, le=100),
+    model: str = Query(default="o3", description="The model to use for generating responses")
 ):
     input_messages = [
         {
@@ -206,7 +207,7 @@ async def get_news(
                 "Content-Type": "application/json"
             },
             json={
-                "model": "o3",
+                "model": model,
                 "input": input_messages,
                 "tools": tools,
                 "reasoning": {"effort": effort},
