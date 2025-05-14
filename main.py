@@ -157,6 +157,20 @@ async def get_news(
 ):
     # If user is provided, immediately return acceptance response
     if user:
+        # Send initial status update
+        try:
+            requests.post(
+                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                json={
+                    "user": user,
+                    "status": "started",
+                    "message": "Starting news aggregation process",
+                    "progress": 0
+                }
+            )
+        except Exception as e:
+            print(f"Failed to send initial status update: {e}")
+
         return JSONResponse(
             status_code=202,
             content={
@@ -214,6 +228,21 @@ async def get_news(
     full_articles = []  # Store full article content
 
     for step in range(max_steps):
+        # Update status for each major step
+        if user:
+            try:
+                requests.post(
+                    "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                    json={
+                        "user": user,
+                        "status": "processing",
+                        "message": f"Processing step {step + 1} of {max_steps}",
+                        "progress": int((step + 1) / max_steps * 100)
+                    }
+                )
+            except Exception as e:
+                print(f"Failed to send status update: {e}")
+
         res = requests.post(
             "https://api.openai.com/v1/responses",
             headers={
@@ -291,6 +320,20 @@ async def get_news(
                 
                 # Only send to Bubble API if user is provided
                 if user:
+                    # Send final status update
+                    try:
+                        requests.post(
+                            "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                            json={
+                                "user": user,
+                                "status": "completed",
+                                "message": "News aggregation completed successfully",
+                                "progress": 100
+                            }
+                        )
+                    except Exception as e:
+                        print(f"Failed to send final status update: {e}")
+
                     # Convert response to base64
                     response_str = json.dumps(response_data)
                     encoded_response = base64.b64encode(response_str.encode()).decode()
@@ -305,11 +348,40 @@ async def get_news(
                     )
                     
                     if bubble_response.status_code != 200:
+                        # Send error status update
+                        try:
+                            requests.post(
+                                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                                json={
+                                    "user": user,
+                                    "status": "error",
+                                    "message": f"Failed to send to Bubble API: {bubble_response.text}",
+                                    "progress": 100
+                                }
+                            )
+                        except Exception as e:
+                            print(f"Failed to send error status update: {e}")
+
                         return JSONResponse(
                             status_code=500,
                             content={"error": f"Failed to send to Bubble API: {bubble_response.text}"}
                         )
                 
                 return response_data
+
+    # Send timeout status update if we reach max steps
+    if user:
+        try:
+            requests.post(
+                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                json={
+                    "user": user,
+                    "status": "error",
+                    "message": f"Failed to generate summary after {max_steps} steps",
+                    "progress": 100
+                }
+            )
+        except Exception as e:
+            print(f"Failed to send timeout status update: {e}")
 
     return JSONResponse(status_code=500, content={"error": f"Failed to generate summary after {max_steps} steps."})
