@@ -157,7 +157,7 @@ async def get_news(
 ):
     print(f"Received request - Topic: {topic}, User: {user}, Effort: {effort}, Model: {model}")
     
-    # If user is provided, immediately return acceptance response
+    # If user is provided, send acceptance response but continue processing
     if user:
         print(f"User provided: {user}, sending initial status update")
         # Send initial status update
@@ -175,8 +175,9 @@ async def get_news(
         except Exception as e:
             print(f"Failed to send initial status update: {e}")
 
-        print("Returning 202 Accepted response")
-        return JSONResponse(
+        print("Sending 202 Accepted response but continuing processing")
+        # Create a background task to continue processing
+        response = JSONResponse(
             status_code=202,
             content={
                 "status": "accepted",
@@ -185,6 +186,8 @@ async def get_news(
                 "topic": topic
             }
         )
+        # Continue processing after sending response
+        # Don't return here, let the code continue
 
     input_messages = [
         {
