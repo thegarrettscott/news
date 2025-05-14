@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import re
+import base64
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
@@ -146,6 +147,7 @@ tools = [
 @app.get("/news", response_class=JSONResponse)
 async def get_news(
     topic: str,
+    user: str,
     date_range: str = "past 2 days",
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False,
@@ -269,9 +271,33 @@ async def get_news(
                 })
 
             elif item["type"] == "message":
-                return {
+                # Prepare the response data
+                response_data = {
                     "summary": item["content"],
-                    "articles": full_articles  # Return full articles in the final response
+                    "articles": full_articles
                 }
+                
+                # Only send to Bubble API if user is provided
+                if user:
+                    # Convert response to base64
+                    response_str = json.dumps(response_data)
+                    encoded_response = base64.b64encode(response_str.encode()).decode()
+                    
+                    # Send to Bubble API
+                    bubble_response = requests.post(
+                        "https://yousletter.bubbleapps.io/api/1.1/wf/newsletter",
+                        json={
+                            "user": user,
+                            "text": encoded_response
+                        }
+                    )
+                    
+                    if bubble_response.status_code != 200:
+                        return JSONResponse(
+                            status_code=500,
+                            content={"error": f"Failed to send to Bubble API: {bubble_response.text}"}
+                        )
+                
+                return response_data
 
     return JSONResponse(status_code=500, content={"error": f"Failed to generate summary after {max_steps} steps."})
