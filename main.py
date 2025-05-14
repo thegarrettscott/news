@@ -147,7 +147,7 @@ tools = [
 @app.get("/news", response_class=JSONResponse)
 async def get_news(
     topic: str,
-    user: str,
+    user: str = None,
     date_range: str = "past 2 days",
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False,
