@@ -3,7 +3,7 @@ import json
 import requests
 import re
 import base64
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 
 try:
@@ -146,6 +146,7 @@ tools = [
 
 @app.get("/news", response_class=JSONResponse)
 async def get_news(
+    background_tasks: BackgroundTasks,
     topic: str,
     user: str = None,
     date_range: str = "past 2 days",
@@ -175,9 +176,11 @@ async def get_news(
         except Exception as e:
             print(f"Failed to send initial status update: {e}")
 
-        print("Sending 202 Accepted response but continuing processing")
-        # Create a background task to continue processing
-        response = JSONResponse(
+        print("Sending 202 Accepted response and continuing processing in background")
+        # Add the processing to background tasks
+        background_tasks.add_task(process_news_request, topic, user, date_range, effort, debug, previous_summary, max_steps, model)
+        
+        return JSONResponse(
             status_code=202,
             content={
                 "status": "accepted",
@@ -186,9 +189,11 @@ async def get_news(
                 "topic": topic
             }
         )
-        # Continue processing after sending response
-        # Don't return here, let the code continue
 
+    # If no user provided, process synchronously
+    return await process_news_request(topic, user, date_range, effort, debug, previous_summary, max_steps, model)
+
+async def process_news_request(topic: str, user: str, date_range: str, effort: str, debug: bool, previous_summary: str, max_steps: int, model: str):
     input_messages = [
         {
             "role": "system",
