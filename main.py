@@ -160,7 +160,7 @@ async def get_news(
         # Send initial status update
         try:
             requests.post(
-                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update_api",
                 json={
                     "user": user,
                     "status": "started",
@@ -232,7 +232,7 @@ async def get_news(
         if user:
             try:
                 requests.post(
-                    "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                    "https://yousletter.bubbleapps.io/api/1.1/wf/status_update_api",
                     json={
                         "user": user,
                         "status": "processing",
@@ -323,7 +323,7 @@ async def get_news(
                     # Send final status update
                     try:
                         requests.post(
-                            "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                            "https://yousletter.bubbleapps.io/api/1.1/wf/status_update_api",
                             json={
                                 "user": user,
                                 "status": "completed",
@@ -351,7 +351,7 @@ async def get_news(
                         # Send error status update
                         try:
                             requests.post(
-                                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update_api",
                                 json={
                                     "user": user,
                                     "status": "error",
@@ -373,7 +373,7 @@ async def get_news(
     if user:
         try:
             requests.post(
-                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update",
+                "https://yousletter.bubbleapps.io/api/1.1/wf/status_update_api",
                 json={
                     "user": user,
                     "status": "error",
