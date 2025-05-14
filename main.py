@@ -155,11 +155,14 @@ async def get_news(
     max_steps: int = Query(default=100, ge=1, le=100),
     model: str = Query(default="o4-mini", description="The model to use for generating responses")
 ):
+    print(f"Received request - Topic: {topic}, User: {user}, Effort: {effort}, Model: {model}")
+    
     # If user is provided, immediately return acceptance response
     if user:
+        print(f"User provided: {user}, sending initial status update")
         # Send initial status update
         try:
-            requests.post(
+            status_response = requests.post(
                 "https://yousletter.bubbleapps.io/api/1.1/wf/status_update_api",
                 json={
                     "user": user,
@@ -168,9 +171,11 @@ async def get_news(
                     "progress": 0
                 }
             )
+            print(f"Status update response: {status_response.status_code} - {status_response.text}")
         except Exception as e:
             print(f"Failed to send initial status update: {e}")
 
+        print("Returning 202 Accepted response")
         return JSONResponse(
             status_code=202,
             content={
