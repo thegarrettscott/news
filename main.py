@@ -155,6 +155,18 @@ async def get_news(
     max_steps: int = Query(default=100, ge=1, le=100),
     model: str = Query(default="o4-mini", description="The model to use for generating responses")
 ):
+    # If user is provided, immediately return acceptance response
+    if user:
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "accepted",
+                "message": "Your request has been accepted and is being processed. The results will be sent to the Bubble API.",
+                "user": user,
+                "topic": topic
+            }
+        )
+
     input_messages = [
         {
             "role": "system",
