@@ -1,7 +1,9 @@
-fastapi
-uvicorn
-requests
-readability-lxml
+fastapi==0.109.2
+uvicorn==0.27.1
+requests==2.31.0
+python-dotenv==1.0.1
+readability-lxml==0.8.1
+lxml_html_clean
 beautifulsoup4
 bs4
 passlib[bcrypt]
