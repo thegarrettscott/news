@@ -441,6 +441,17 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
                     # Store the full content for the final response
                     if "_full_content" in result:
                         full_articles.append(result["_full_content"])
+                    else:
+                        # If no _full_content, use the basic content
+                        full_articles.append({
+                            "url": result["url"],
+                            "title": result["title"],
+                            "text": result["text"],
+                            "image": result["image"],
+                            "metadata": {
+                                "content_length": len(result["text"]) if result["text"] else 0
+                            }
+                        })
                 elif item["name"] == "dig_deeper":
                     # Store the deep dive results
                     if "choices" in result:
@@ -482,6 +493,9 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
 
             elif item["type"] == "message":
                 # Prepare the response data
+                print(f"Debug: Number of full articles: {len(full_articles)}")
+                print(f"Debug: Full articles content: {json.dumps(full_articles, indent=2)}")
+                
                 response_data = {
                     "summary": item["content"],
                     "articles": full_articles,  # Include the full article content
