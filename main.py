@@ -48,13 +48,13 @@ def perform_search(topic: str, date_range: str):
     
     # Determine the model based on effort
     if effort == "low":
-        model = "o4-mini-high"
+        model = "o4-mini"
         search_model = "grok-3-mini-latest"
     elif effort == "high":
-        model = "o4-mini-high"
+        model = "o4-mini"
         search_model = "grok-3-latest"
     else:
-        model = "o4-mini-high"
+        model = "o4-mini"
         search_model = "grok-3-mini-latest"
 
     # Update the payload for search_news to use the search_model
