@@ -28,9 +28,9 @@ def get_date_range(days: int):
     start_date = end_date - timedelta(days=days)
     return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
-def perform_search(topic: str, date_range: str):
+def perform_search(topic: str, date_range: str, effort: str):
     """Search using X.AI's search API."""
-    print(f"Starting perform_search for topic: {topic}, date_range: {date_range}")
+    print(f"Starting perform_search for topic: {topic}, date_range: {date_range}, effort: {effort}")
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
@@ -457,7 +457,7 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
             elif item["type"] == "function_call":
                 args = json.loads(item["arguments"])
                 result = (
-                    perform_search(**args)
+                    perform_search(**args, effort=effort)
                     if item["name"] == "search_news"
                     else (
                         dig_deeper(**args)
