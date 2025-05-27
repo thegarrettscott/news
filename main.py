@@ -47,7 +47,7 @@ def perform_search(topic: str, date_range: str):
     print(f"Date range: {from_date} to {to_date}")
     
     payload = {
-        "model": "grok-3-latest",
+        "model": "grok-3-mini-latest",
         "messages": [
             {
                 "role": "system",
@@ -110,7 +110,7 @@ def dig_deeper(story: str, days: int = 2, additional_focus: str = ""):
     from_date, to_date = get_date_range(days)
     
     payload = {
-        "model": "grok-3-latest",
+        "model": "grok-3-mini-latest",
         "messages": [
             {
                 "role": "system",
