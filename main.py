@@ -57,6 +57,9 @@ def perform_search(topic: str, date_range: str):
         model = "o4-mini"
         search_model = "grok-3-mini-latest"
 
+    # Always set the effort for /responses to 'high'
+    response_effort = "high"
+
     # Update the payload for search_news to use the search_model
     payload = {
         "model": search_model,
@@ -428,7 +431,7 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
                 "model": model,
                 "input": input_messages,
                 "tools": tools,
-                "reasoning": {"effort": effort},
+                "reasoning": {"effort": "high"},
                 "tool_choice": "auto"
             }
         )
