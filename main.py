@@ -331,6 +331,7 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
             "role": "system",
             "content": (
                 "You are an investigative research correspondent helping a human newsletter writer surface the most important news published in the last 48 hours about a given topic.\n\n"
+                "CRITICAL REQUIREMENT: You MUST call fetch_content on at least 5-7 of the most important stories before writing the briefing. Do not write the briefing until you have scraped full content for these stories.\n\n"
                 "YOUR MISSION\n"
                 "1) Produce a 10-20-paragraph briefing (no headlines older than 48 hours).\n"
                 "2) Exclude any story that overlaps with the text supplied in previous_summary.\n"
