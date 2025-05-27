@@ -518,6 +518,35 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
                 print(f"Debug: Number of full articles: {len(full_articles)}")
                 print(f"Debug: Full articles content: {json.dumps(full_articles, indent=2)}")
                 
+                # If no articles were scraped, force a fetch_content call for the first citation in the last search_news result
+                if not full_articles:
+                    print("No articles found, attempting to fetch content for the first citation in the last search_news result.")
+                    # Find the last search_news result in input_messages
+                    for msg in reversed(input_messages):
+                        if msg.get("type") == "function_call_output" and 'search_news' in msg.get("output", ""):
+                            try:
+                                output_data = json.loads(msg["output"])
+                                citations = output_data.get("citations", [])
+                                if citations and isinstance(citations[0], dict) and citations[0].get("url"):
+                                    url = citations[0]["url"]
+                                    print(f"Forcing fetch_content for URL: {url}")
+                                    result = scrape_content(url)
+                                    if "_full_content" in result:
+                                        full_articles.append(result["_full_content"])
+                                    else:
+                                        full_articles.append({
+                                            "url": result.get("url"),
+                                            "title": result.get("title"),
+                                            "text": result.get("text"),
+                                            "image": result.get("image"),
+                                            "metadata": {
+                                                "content_length": len(result.get("text") or "")
+                                            }
+                                        })
+                                break
+                            except Exception as e:
+                                print(f"Error forcing fetch_content: {e}")
+                                break
                 response_data = {
                     "summary": item["content"],
                     "articles": full_articles,  # Include the full article content
