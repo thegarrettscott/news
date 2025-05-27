@@ -192,9 +192,31 @@ def scrape_content(url: str):
     bl_endpoint = f"https://chrome.browserless.io/content?token={BROWSERLESS_API_KEY}"
     try:
         res = requests.post(bl_endpoint, json={"url": url}, timeout=15)
+        if res.status_code == 429:  # Rate limit exceeded
+            print(f"Browserless.io rate limit exceeded for URL: {url}")
+            return {
+                "url": url,
+                "title": None,
+                "text": "Browserless.io rate limit exceeded. Please try again later.",
+                "image": None,
+                "metadata": {
+                    "error": "rate_limit_exceeded",
+                    "content_length": 0
+                }
+            }
         html = res.text
     except Exception as e:
-        return {"url": url, "error": str(e), "title": None, "text": None, "image": None}
+        print(f"Error scraping content for {url}: {str(e)}")
+        return {
+            "url": url,
+            "title": None,
+            "text": f"Error scraping content: {str(e)}",
+            "image": None,
+            "metadata": {
+                "error": str(e),
+                "content_length": 0
+            }
+        }
 
     doc = Document(html)
     title = doc.short_title()
