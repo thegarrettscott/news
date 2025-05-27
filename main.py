@@ -46,8 +46,20 @@ def perform_search(topic: str, date_range: str):
     from_date, to_date = get_date_range(days)
     print(f"Date range: {from_date} to {to_date}")
     
+    # Determine the model based on effort
+    if effort == "low":
+        model = "o4-mini-high"
+        search_model = "grok-3-mini-latest"
+    elif effort == "high":
+        model = "o4-mini-high"
+        search_model = "grok-3-latest"
+    else:
+        model = "o4-mini-high"
+        search_model = "grok-3-mini-latest"
+
+    # Update the payload for search_news to use the search_model
     payload = {
-        "model": "grok-3-mini-latest",
+        "model": search_model,
         "messages": [
             {
                 "role": "system",
