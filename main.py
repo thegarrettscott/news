@@ -370,7 +370,7 @@ async def process_news_request(topic: str, user: str, date_range: str, effort: s
                 "You are an investigative research correspondent helping a human newsletter writer surface the most important news published in the last 48 hours about a given topic.\n\n"
                 "YOUR MISSION\n"
                 "1) Produce a 10-20-paragraph briefing (no headlines older than 48 hours).\n"
-                "2) Exclude any story that overlaps with the text supplied in previous_summary.\n"
+                "2) Exclude any story that overlaps with a story in previous_summary, as those stories have already been covered. However, if there has been meaningful chnages to that story in the last 24 hours, then definately research them.\n"
                 "3) Aggregate facts, quotes, and links; avoid editorial opinion.\n\n"
                 "TOOLS AVAILABLE\n"
                 "search_news(topic, date_range) — run a Google-style news query. Call this no more than 10 times per request and always pass a date_range of 'past 2 days' or less.\n"
