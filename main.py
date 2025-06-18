@@ -339,7 +339,8 @@ async def get_news(
                     "status": "started",
                     "message": "Starting news aggregation process",
                     "progress": 0
-                }
+                },
+                timeout=5
             )
             print(f"Status update response: {status_response.status_code} - {status_response.text}")
         except Exception as e:
@@ -413,15 +414,11 @@ NEVER mention any tool names in the briefing itself. The writer only sees final 
 IV. HOW TO PROMPT THE TOOLS EFFECTIVELY
 ────────────────────────────────────────
 A. search_news best practices
-• Craft highly specific queries: include key nouns, relevant verbs, and distinguishing qualifiers.
-• Use quotes for exact phrases and minus signs to exclude noise words.
-• Append the topic plus fresh angles (e.g., "earnings", "acquisition", "regulation", "lawsuit").
-• Run multiple queries in parallel when the angles are unrelated to save cycles.
-• Example call: search_news("Nvidia AI chip shortages Taiwan fab expansion", "past 24 hours").
+• Be curious about the topic and start broadly and then narrow down to specific angles.
 
 B. dig_deeper best practices
-• Trigger only when headline blurbs are insufficient or conflicting.
-• Clarify what you still need: source documents? rival viewpoint? timeline?
+• Trigger after the broad query has been run and you have a list of interesting stories.
+• Clarify what you still need: source documents? rival viewpoint? online opiniona? timeline?
 • Keep days ≤ 2 so all follow-ups remain inside the 48-hour window.
 • Example call: dig_deeper("FTC antitrust complaint against Microsoft-Activision deal", 2, "court filings and quotes from Chair Lina Khan").
 
@@ -438,7 +435,8 @@ STEP 0 QUICK SCAN OF previous_summary
 • Flag any story that might have materially changed today.
 
 STEP 1 PLAN YOUR QUERY SET
-• Break the topic into 3-5 sub-angles (e.g., product, finance, policy, competitors).
+- Start with a broad query:
+• Break the topic into 3-5 sub-braod querys (e.g., product, finance, policy, competitors).
 • Draft ≤ 10 precise search_news queries that collectively cover every angle.
 • Write them down before executing; this prevents wasteful calls.
 
@@ -448,7 +446,6 @@ STEP 2 RUN search_news CALLS
 • For each result, jot a one-line note on why it might matter.
 
 STEP 3 TRIAGE HITS
-• Score each hit 1-5 on expected impact (5 = huge industry shift).
 • Select top ~10 hits for deeper validation.
 
 STEP 4 dig_deeper WHERE NEEDED
@@ -510,7 +507,7 @@ VII. HARD CONSTRAINTS
 ────────────────────────────────────────
 ✓ Strict 48-hour freshness window for every headline and data point.
 ✓ Maximum ten search_news calls.
-✓ Minimum five and maximum seven fetch_content calls.
+✓ Minimum five and maximum 15 fetch_content calls.
 ✓ Exclude or succinctly update anything that appears in previous_summary.
 ✓ Stop research once briefing meets quality bar; do not exceed time or tool limits.
 ✓ Output must be the JSON object expected by downstream endpoint (fields: briefing_text).
@@ -531,13 +528,15 @@ IX. BEST-PRACTICE EXAMPLE (ABBREVIATED)
 Suppose topic = "electric vehicle batteries" and previous_summary covered Ford-CATL licensing deal.
 
 Plan queries:
-
+Start with a broad query:
+"electric vehicle batteries"
+Then narrow down to specific angles based on the result
 "solid-state battery pilot plant funding past 24 hours"
 
 "lithium prices contract negotiations 'past 24 hours'"
 
 "EV battery recycling startup Series B 'past 24 hours'"
-Execute queries, triage results, dig_deeper on "DOE grants" for award amounts, fetch_content top articles from WSJ, TechCrunch, Reuters, Nikkei, and a specialist trade.
+Execute queries, triage results, dig_deeper on "DOE grants" for award amounts, fetch_content from a variety of sources.
 Draft paragraphs:
 
 TECH: [article title linked] (Nikkei Asia) Toyota said Wednesday it will begin mass-production of solid-state EV batteries in 2027, aiming for 1,000-km range and 10-minute recharge, executives told reporters after unveiling a pilot line in Aichi. The ¥1.5 tn ($9.5 bn) project is partly funded by Japan's Green Innovation fund. [image: toyota_solidstate.jpg alt:"Prototype solid-state cell" caption:"Toyota's pilot line cell"]
