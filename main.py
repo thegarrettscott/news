@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from typing import Dict, List, Optional
 
 try:
     from readability import Document
@@ -21,6 +22,103 @@ app = FastAPI()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 BROWSERLESS_API_KEY = os.getenv("BROWSERLESS_API_KEY")
+
+# Cost tracking configuration
+COST_TRACKING = {
+    "openai": {
+        "gpt-4o": {"input": 0.0025, "output": 0.01},  # per 1K tokens
+        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},  # per 1K tokens
+        "gpt-4.1": {"input": 0.01, "output": 0.03},  # per 1K tokens
+        "o3": {"input": 0.005, "output": 0.015},  # per 1K tokens
+        "o4-mini": {"input": 0.00015, "output": 0.0006},  # per 1K tokens
+    },
+    "xai": {
+        "grok-3-latest": {"input": 0.0001, "output": 0.0003},  # per 1K tokens
+        "grok-3-mini-latest": {"input": 0.00005, "output": 0.00015},  # per 1K tokens
+        "o3": {"input": 0.005, "output": 0.015},  # per 1K tokens
+        "o4-mini": {"input": 0.00015, "output": 0.0006},  # per 1K tokens
+    },
+    "browserless": {
+        "per_request": 0.001  # per request
+    }
+}
+
+class CostTracker:
+    def __init__(self):
+        self.total_cost = 0.0
+        self.calls = []
+        self.start_time = datetime.now()
+    
+    def add_call(self, function_name: str, model: str, provider: str, 
+                 input_tokens: int = 0, output_tokens: int = 0, 
+                 additional_cost: float = 0.0, success: bool = True):
+        """Track a function call with cost calculation."""
+        call_cost = 0.0
+        
+        # Calculate token costs
+        if provider in COST_TRACKING and model in COST_TRACKING[provider]:
+            pricing = COST_TRACKING[provider][model]
+            input_cost = (input_tokens / 1000) * pricing["input"]
+            output_cost = (output_tokens / 1000) * pricing["output"]
+            call_cost = input_cost + output_cost
+        
+        # Add additional costs (e.g., browserless)
+        call_cost += additional_cost
+        
+        call_data = {
+            "function": function_name,
+            "model": model,
+            "provider": provider,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost": call_cost,
+            "timestamp": datetime.now().isoformat(),
+            "success": success
+        }
+        
+        self.calls.append(call_data)
+        self.total_cost += call_cost
+        
+        print(f"💰 Cost tracking: {function_name} ({model}) - ${call_cost:.4f} "
+              f"({input_tokens} input, {output_tokens} output tokens)")
+        
+        return call_data
+    
+    def get_summary(self) -> Dict:
+        """Get cost summary and breakdown."""
+        provider_breakdown = {}
+        function_breakdown = {}
+        
+        for call in self.calls:
+            # Provider breakdown
+            provider = call["provider"]
+            if provider not in provider_breakdown:
+                provider_breakdown[provider] = {"cost": 0.0, "calls": 0}
+            provider_breakdown[provider]["cost"] += call["cost"]
+            provider_breakdown[provider]["calls"] += 1
+            
+            # Function breakdown
+            function = call["function"]
+            if function not in function_breakdown:
+                function_breakdown[function] = {"cost": 0.0, "calls": 0}
+            function_breakdown[function]["cost"] += call["cost"]
+            function_breakdown[function]["calls"] += 1
+        
+        return {
+            "total_cost": self.total_cost,
+            "total_calls": len(self.calls),
+            "duration_seconds": (datetime.now() - self.start_time).total_seconds(),
+            "provider_breakdown": provider_breakdown,
+            "function_breakdown": function_breakdown,
+            "calls": self.calls
+        }
+
+# Global cost tracker instance
+cost_tracker = CostTracker()
+
+def estimate_tokens(text: str) -> int:
+    """Rough token estimation (4 characters per token is a common approximation)."""
+    return len(text) // 4
 
 def get_date_range(days: int):
     """Calculate date range for X.AI search."""
@@ -60,34 +158,37 @@ def perform_search(topic: str, date_range: str, effort: str):
     # Always set the effort for /responses to 'high'
     response_effort = "high"
 
-    # Update the payload for search_news to use the search_model
+    # Update the payload for search_news to use the search_model - FOCUS ON X/TWITTER ONLY
     payload = {
         "model": search_model,
         "messages": [
             {
                 "role": "system",
-                "content": "You are an expert news curator helping research for a newsletter. Your job is to find as many interesting and relevant stories and opinions as possible and return as much info to the writer as you can. Be sure to find stories, surface quotes and opinions, and get as granular as you can to help the person writing the newsletter."
+                "content": "You are an expert social media curator specializing in X (formerly Twitter) content analysis. Your mission is to find the most compelling tweets, X posts, conversations, and social media discourse on the given topic. Focus on:\n\n- Viral tweets and trending conversations\n- Posts from verified accounts, influencers, experts, and officials\n- Tweet threads with detailed analysis or breaking news\n- Real-time reactions and public sentiment\n- Quote tweets and reply chains that show different perspectives\n- Trending hashtags and their context\n- X Spaces discussions and live commentary\n- Breaking news as it unfolds on X\n- Expert takes and professional commentary\n- Community reactions and grassroots conversations\n\nAlways include tweet text, author handles, engagement metrics when available, and direct links to the original posts."
             },
             {
                 "role": "user",
-                "content": f"Research {topic} from the last {days} days. Focus on the most important and impactful stories."
+                "content": f"Search X (Twitter) for the most important posts, tweets, and conversations about '{topic}' from the last {days} days. Find:\n\n1. Viral tweets and high-engagement posts\n2. Posts from verified accounts and experts\n3. Breaking news and real-time updates\n4. Tweet threads with detailed analysis\n5. Different perspectives and debates\n6. Trending hashtags related to the topic\n7. Quote tweets and meaningful replies\n8. Official statements posted on X\n9. Live reactions and commentary\n10. Community discussions and grassroots voices\n\nFocus EXCLUSIVELY on content from X/Twitter. Include tweet text, author information, and engagement data when possible."
             }
         ],
         "search_parameters": {
             "mode": "on",
             "sources": [
-                {"type": "web"},
-                {"type": "news"},
                 {"type": "x"}
             ],
             "from_date": from_date,
             "to_date": to_date,
-            "max_search_results": 25,
-            "return_citations": True
+            "max_search_results": 30,
+            "return_citations": True,
+            "search_depth": "comprehensive"
         },
         "temperature": 0.3,
-        "max_tokens": 2500
+        "max_tokens": 3000
     }
+    
+    # Estimate input tokens for cost tracking
+    input_text = payload["messages"][0]["content"] + payload["messages"][1]["content"]
+    estimated_input_tokens = estimate_tokens(input_text)
     
     print("Making request to X.AI API...")
     try:
@@ -99,11 +200,26 @@ def perform_search(topic: str, date_range: str, effort: str):
         print(f"X.AI API response status: {response.status_code}")
         response.raise_for_status()
         data = response.json()
-        print(f"X.AI API response data: {json.dumps(data, indent=2)}")
         
         # Extract content and citations from X.AI response
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         citations = data.get("citations", [])
+        
+        # Get actual token usage from response
+        usage = data.get("usage", {})
+        actual_input_tokens = usage.get("prompt_tokens", estimated_input_tokens)
+        actual_output_tokens = usage.get("completion_tokens", estimate_tokens(content))
+        
+        # Track cost
+        cost_tracker.add_call(
+            function_name="search_news",
+            model=search_model,
+            provider="xai",
+            input_tokens=actual_input_tokens,
+            output_tokens=actual_output_tokens,
+            success=True
+        )
+        
         print(f"Found {len(citations)} citations")
         
         return {
@@ -113,6 +229,17 @@ def perform_search(topic: str, date_range: str, effort: str):
         
     except Exception as e:
         print(f"Error in X.AI search: {str(e)}")
+        
+        # Track failed call
+        cost_tracker.add_call(
+            function_name="search_news",
+            model=search_model,
+            provider="xai",
+            input_tokens=estimated_input_tokens,
+            output_tokens=0,
+            success=False
+        )
+        
         return {"content": "", "citations": [], "error": str(e)}
 
 def dig_deeper(story: str, days: int = 2, additional_focus: str = ""):
@@ -209,6 +336,16 @@ def scrape_content(url: str):
         res = requests.post(bl_endpoint, json={"url": url}, timeout=15)
         if res.status_code == 429:  # Rate limit exceeded
             print(f"Browserless.io rate limit exceeded for URL: {url}")
+            
+            # Track rate limit as a cost (still counts as a request)
+            cost_tracker.add_call(
+                function_name="fetch_content",
+                model="browserless",
+                provider="browserless",
+                additional_cost=COST_TRACKING["browserless"]["per_request"],
+                success=False
+            )
+            
             return {
                 "url": url,
                 "title": None,
@@ -220,8 +357,28 @@ def scrape_content(url: str):
                 }
             }
         html = res.text
+        
+        # Track successful browserless call
+        cost_tracker.add_call(
+            function_name="fetch_content",
+            model="browserless",
+            provider="browserless",
+            additional_cost=COST_TRACKING["browserless"]["per_request"],
+            success=True
+        )
+        
     except Exception as e:
         print(f"Error scraping content for {url}: {str(e)}")
+        
+        # Track failed browserless call
+        cost_tracker.add_call(
+            function_name="fetch_content",
+            model="browserless",
+            provider="browserless",
+            additional_cost=COST_TRACKING["browserless"]["per_request"],
+            success=False
+        )
+        
         return {
             "url": url,
             "title": None,
@@ -268,11 +425,243 @@ def scrape_content(url: str):
     
     return full_content
 
+def openai_web_search(query: str, max_results: int = 10, focus_area: str = ""):
+    """Perform web search using OpenAI's native search capability."""
+    print(f"Starting OpenAI web search for query: {query}, max_results: {max_results}")
+    
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # Enhanced system prompt for research-focused search
+    system_prompt = """You are an expert research assistant specializing in comprehensive web search and analysis. Your role is to:
+
+1. Conduct thorough web searches to find the most relevant, recent, and authoritative sources
+2. Analyze and synthesize information from multiple sources
+3. Identify key facts, quotes, and data points
+4. Provide clear attribution and source links
+5. Flag any conflicting information or different perspectives
+6. Focus on credible news sources, official statements, and expert analysis
+7. Extract actionable insights and important context
+
+Always prioritize accuracy, recency, and source credibility in your research."""
+
+    user_prompt = f"""Research: {query}
+
+Please conduct a comprehensive web search and provide:
+1. Key findings and developments
+2. Important quotes from officials, experts, or key figures
+3. Relevant data, statistics, and facts
+4. Multiple perspectives if they exist
+5. Source links for verification
+6. Timeline of events if applicable
+
+{f"Special focus: {focus_area}" if focus_area else ""}
+
+Prioritize sources from the last 48 hours but include essential background context as needed."""
+
+    payload = {
+        "model": "gpt-4o",  # Use the latest model with search capabilities
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": user_prompt
+            }
+        ],
+        "tools": [
+            {
+                "type": "web_search",
+                "web_search": {
+                    "max_results": max_results
+                }
+            }
+        ],
+        "tool_choice": "auto",
+        "temperature": 0.3,
+        "max_tokens": 3000
+    }
+    
+    # Estimate input tokens for cost tracking
+    input_text = system_prompt + user_prompt
+    estimated_input_tokens = estimate_tokens(input_text)
+    
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        print(f"OpenAI web search response status: {response.status_code}")
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract the response content
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        
+        # Extract any tool calls and their results
+        tool_calls = data.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+        search_results = []
+        
+        for tool_call in tool_calls:
+            if tool_call.get("type") == "web_search":
+                search_results.append(tool_call)
+        
+        # Get actual token usage from response
+        usage = data.get("usage", {})
+        actual_input_tokens = usage.get("prompt_tokens", estimated_input_tokens)
+        actual_output_tokens = usage.get("completion_tokens", estimate_tokens(content))
+        
+        # Track cost
+        cost_tracker.add_call(
+            function_name="openai_web_search",
+            model="gpt-4o",
+            provider="openai",
+            input_tokens=actual_input_tokens,
+            output_tokens=actual_output_tokens,
+            success=True
+        )
+        
+        return {
+            "content": content,
+            "search_results": search_results,
+            "query": query,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"Error in OpenAI web search: {str(e)}")
+        
+        # Track failed call
+        cost_tracker.add_call(
+            function_name="openai_web_search",
+            model="gpt-4o",
+            provider="openai",
+            input_tokens=estimated_input_tokens,
+            output_tokens=0,
+            success=False
+        )
+        
+        return {"content": "", "search_results": [], "error": str(e), "query": query}
+
+def deep_research_analysis(topic: str, research_depth: str = "comprehensive", time_range: str = "48 hours"):
+    """Conduct deep research analysis using OpenAI's capabilities."""
+    print(f"Starting deep research analysis for topic: {topic}")
+    
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = """You are an expert investigative researcher conducting deep analysis on complex topics. Your approach should be:
+
+1. SYSTEMATIC: Break down the topic into key components and research each thoroughly
+2. MULTI-PERSPECTIVE: Seek out different viewpoints, expert opinions, and stakeholder positions  
+3. FACT-FOCUSED: Prioritize verifiable facts, official statements, and credible sources
+4. CONTEXTUAL: Provide historical background and broader implications
+5. ANALYTICAL: Connect dots between related events and identify patterns
+6. COMPREHENSIVE: Leave no stone unturned in your investigation
+
+Use web search extensively to gather information from multiple authoritative sources. Always cite your sources and flag any conflicting information you find."""
+
+    user_prompt = f"""Conduct a comprehensive deep research analysis on: {topic}
+
+Research Requirements:
+- Time focus: {time_range}
+- Depth level: {research_depth}
+
+Please investigate and provide:
+
+1. **Current Status & Latest Developments**
+   - What's happening right now?
+   - Latest news and updates
+   - Recent official statements
+
+2. **Key Players & Stakeholders**
+   - Who are the main actors?
+   - What are their positions and motivations?
+   - Direct quotes from key figures
+
+3. **Background & Context**
+   - How did we get here?
+   - Historical precedents
+   - Related events and connections
+
+4. **Data & Evidence**
+   - Hard facts and statistics
+   - Financial figures where relevant
+   - Technical details and specifications
+
+5. **Multiple Perspectives**
+   - Different viewpoints on the issue
+   - Expert analysis and commentary
+   - Public and industry reactions
+
+6. **Implications & Future Outlook**
+   - What does this mean going forward?
+   - Potential consequences and outcomes
+   - Timeline of expected developments
+
+Use extensive web searches to gather comprehensive information. Prioritize recent sources but include essential background context."""
+
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
+            {
+                "role": "system", 
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": user_prompt
+            }
+        ],
+        "tools": [
+            {
+                "type": "web_search",
+                "web_search": {
+                    "max_results": 20
+                }
+            }
+        ],
+        "tool_choice": "auto",
+        "temperature": 0.2,
+        "max_tokens": 4000
+    }
+    
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        tool_calls = data.get("choices", [{}])[0].get("message", {}).get("tool_calls", [])
+        
+        return {
+            "content": content,
+            "tool_calls": tool_calls,
+            "topic": topic,
+            "research_depth": research_depth,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"Error in deep research analysis: {str(e)}")
+        return {"content": "", "tool_calls": [], "error": str(e), "topic": topic}
+
 tools = [
     {
         "type": "function",
         "name": "search_news",
-        "description": "Search recent news stories about a topic.",
+        "description": "Search X (Twitter) for viral tweets, trending conversations, and social media discourse on a specific topic. Returns tweet content, author information, engagement metrics, and direct links to posts.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -310,6 +699,36 @@ tools = [
             "required": ["url"],
             "additionalProperties": False
         }
+    },
+    {
+        "type": "function",
+        "name": "openai_web_search",
+        "description": "Perform comprehensive web search using OpenAI's native search capabilities.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": { "type": "string" },
+                "max_results": { "type": "integer", "default": 10 },
+                "focus_area": { "type": "string", "default": "" }
+            },
+            "required": ["query"],
+            "additionalProperties": False
+        }
+    },
+    {
+        "type": "function", 
+        "name": "deep_research_analysis",
+        "description": "Conduct comprehensive deep research analysis on complex topics.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": { "type": "string" },
+                "research_depth": { "type": "string", "enum": ["basic", "comprehensive", "exhaustive"], "default": "comprehensive" },
+                "time_range": { "type": "string", "default": "48 hours" }
+            },
+            "required": ["topic"],
+            "additionalProperties": False
+        }
     }
 ]
 
@@ -322,10 +741,9 @@ async def get_news(
     effort: str = Query(default="medium", enum=["low", "medium", "high"]),
     debug: bool = False,
     previous_summary: str = None,
-    max_steps: int = Query(default=100, ge=1, le=100),
-    model: str = Query(default="o4-mini", description="The model to use for generating responses")
+    max_steps: int = Query(default=100, ge=1, le=100)
 ):
-    print(f"Received request - Topic: {topic}, User: {user}, Effort: {effort}, Model: {model}, Debug: {debug}")
+    print(f"Received request - Topic: {topic}, User: {user}, Effort: {effort}, Debug: {debug}")
     
     # If user is provided, send acceptance response but continue processing
     if user:
@@ -348,7 +766,7 @@ async def get_news(
 
         print("Sending 202 Accepted response and continuing processing in background")
         # Add the processing to background tasks
-        background_tasks.add_task(process_news_request, topic, user, date_range, effort, debug, previous_summary, max_steps, model)
+        background_tasks.add_task(process_news_request, topic, user, date_range, effort, debug, previous_summary, max_steps)
         
         return JSONResponse(
             status_code=202,
@@ -361,9 +779,9 @@ async def get_news(
         )
 
     # If no user provided, process synchronously
-    return await process_news_request(topic, user, date_range, effort, debug, previous_summary, max_steps, model)
+    return await process_news_request(topic, user, date_range, effort, debug, previous_summary, max_steps)
 
-async def process_news_request(topic: str, user: str, date_range: str, effort: str, debug: bool, previous_summary: str, max_steps: int, model: str):
+async def process_news_request(topic: str, user: str, date_range: str, effort: str, debug: bool, previous_summary: str, max_steps: int):
     input_messages = [
         {
             "role": "system",
@@ -395,12 +813,14 @@ II. INPUTS YOU RECEIVE EACH RUN
 III. TOOLS AVAILABLE – AND NOTHING ELSE
 ────────────────────────────────────────
 search_news(topic, date_range)
-– Google-style news query returning recent headlines (title, url, outlet, timestamp).
+– X.AI-powered search focused EXCLUSIVELY on X (Twitter) content.
+– Returns viral tweets, trending conversations, expert posts, and real-time social discourse.
+– Includes tweet text, author handles, engagement metrics, and direct post links.
 – date_range must be "past 2 days" or narrower.
 – MAX TEN calls per assignment.
 
 dig_deeper(story, days, additional_focus)
-– Follow-up research on a specific story string.
+– Follow-up research on a specific story string using X.AI.
 – days defines how far back to examine (keep ≤ 2).
 – additional_focus lets you narrow: e.g., "financials", "lawsuit source docs".
 
@@ -408,19 +828,31 @@ fetch_content(url)
 – Scrapes full article: title, plain text body, lead image (url, caption, alt).
 – REQUIRED on the five to seven most critical articles.
 
+openai_web_search(query, max_results, focus_area)
+– OpenAI's native web search with real-time access to current information.
+– Provides comprehensive analysis with source attribution.
+– Use for broad topic research and fact verification.
+– max_results: 10-20 for comprehensive coverage.
+
+deep_research_analysis(topic, research_depth, time_range)
+– Comprehensive investigative research using OpenAI's advanced capabilities.
+– research_depth: "basic", "comprehensive", or "exhaustive".
+– Provides structured analysis with multiple perspectives.
+– Use for complex topics requiring deep investigation.
+
 NEVER mention any tool names in the briefing itself. The writer only sees final copy.
 
 ────────────────────────────────────────
 IV. HOW TO PROMPT THE TOOLS EFFECTIVELY
 ────────────────────────────────────────
 A. search_news best practices
-• Be curious about the topic and start broadly and then narrow down to specific angles.
+• Be curious about the topic and start broadly, starting always with just searching the topic verbatim and then narrow down to specific angles. Remember try to be a really good investigative reporter and try to find the most interesting stories, while also making sure not to miss big stories.
 
 B. dig_deeper best practices
 • Trigger after the broad query has been run and you have a list of interesting stories.
-• Clarify what you still need: source documents? rival viewpoint? online opiniona? timeline?
+• Clarify what you still need: source documents? rival viewpoint? online opiniona? timeline? Ask for as much as possible, you won't keep it all, but you should still ask.
 • Keep days ≤ 2 so all follow-ups remain inside the 48-hour window.
-• Example call: dig_deeper("FTC antitrust complaint against Microsoft-Activision deal", 2, "court filings and quotes from Chair Lina Khan").
+• Example call: dig_deeper("NVIDIA's AI chip shortage", 2, "online opinions, CEO Tweets, contrarian viewpoints, NVIDEO statement").
 
 C. fetch_content best practices
 • Choose definitive, original-reporting sources first (major newspapers, wires, specialist trades).
@@ -434,15 +866,21 @@ STEP 0 QUICK SCAN OF previous_summary
 • List yesterday's slugs to avoid duplicates.
 • Flag any story that might have materially changed today.
 
-STEP 1 PLAN YOUR QUERY SET
-- Start with a broad query:
-• Break the topic into 3-5 sub-braod querys (e.g., product, finance, policy, competitors).
-• Draft ≤ 10 precise search_news queries that collectively cover every angle.
+STEP 1 PLAN YOUR RESEARCH STRATEGY
+- Start with strategic tool selection:
+• For broad topic coverage: Use openai_web_search for comprehensive, real-time information
+• For X/Twitter social discourse: Use search_news for viral tweets, trending conversations, and real-time reactions
+• For complex investigations: Use deep_research_analysis for thorough investigation
+• Break the topic into 3-5 sub-queries covering different angles
+• Draft ≤ 10 total search calls across all tools
 • Write them down before executing; this prevents wasteful calls.
 
-STEP 2 RUN search_news CALLS
-• Execute queries. Collect headline, publisher, timestamp, url.
-• Immediately discard anything older than 48 h or clearly duplicative.
+STEP 2 EXECUTE RESEARCH CALLS
+• Start with 1-2 openai_web_search calls for broad topic understanding
+• Follow with targeted search_news calls for X/Twitter social media coverage and viral conversations
+• Use deep_research_analysis for complex stories requiring investigation
+• Collect tweets, posts, headlines, sources, timestamps, and analysis
+• Immediately discard anything older than 48 h or clearly duplicative
 • For each result, jot a one-line note on why it might matter.
 
 STEP 3 TRIAGE HITS
@@ -453,7 +891,7 @@ STEP 4 dig_deeper WHERE NEEDED
 • Merge new facts back into your notes.
 
 STEP 5 fetch_content FOR CORE ARTICLES
-• Pick 5-7 must-cover URLs.
+• Pick 5-7 must-cover URLs t gather more info on important developments.
 • Run fetch_content on each.
 • While reading scraped text, extract:
 – direct quotes with attribution
@@ -472,7 +910,7 @@ STEP 7 DEDUP & UPDATE FILTER
 • For updated threads, focus paragraphs on "what changed since yesterday."
 
 STEP 8 STRUCTURE THE BRIEFING
-• Aim for 10-20 paragraphs.
+• Aim for 40-50 paragraphs.
 • Each paragraph starts with an ALL-CAPS slug of 4-10 characters, colon, space (e.g., M&A:, GOVT:, DATA:, LEGAL:, EARN:).
 • First sentence: article title linked inline to its url. Immediately follow with outlet in parentheses.
 • Body: 1-3 tightly written sentences summarizing the new facts, quoting numbers, citing named sources.
@@ -567,6 +1005,9 @@ Follow these instructions meticulously and you will consistently produce high-qu
     scraped_articles = []
     full_articles = []  # Store full article content
 
+    # Determine the model internally based on effort (low -> o4-mini, medium/high -> o3)
+    selected_model = "o4-mini" if effort == "low" else "o3"
+
     for step in range(max_steps):
         # Update status for each major step
         if user:
@@ -590,7 +1031,7 @@ Follow these instructions meticulously and you will consistently produce high-qu
                 "Content-Type": "application/json"
             },
             json={
-                "model": model,
+                "model": selected_model,
                 "input": input_messages,
                 "tools": tools,
                 "reasoning": {"effort": "high"},
@@ -618,15 +1059,18 @@ Follow these instructions meticulously and you will consistently produce high-qu
 
             elif item["type"] == "function_call":
                 args = json.loads(item["arguments"])
-                result = (
-                    perform_search(**args, effort=effort)
-                    if item["name"] == "search_news"
-                    else (
-                        dig_deeper(**args)
-                        if item["name"] == "dig_deeper"
-                        else scrape_content(**args)
-                    )
-                )
+                if item["name"] == "search_news":
+                    result = perform_search(**args, effort=effort)
+                elif item["name"] == "dig_deeper":
+                    result = dig_deeper(**args)
+                elif item["name"] == "fetch_content":
+                    result = scrape_content(**args)
+                elif item["name"] == "openai_web_search":
+                    result = openai_web_search(**args)
+                elif item["name"] == "deep_research_analysis":
+                    result = deep_research_analysis(**args)
+                else:
+                    result = {"error": f"Unknown function: {item['name']}"}
 
                 # Store scraped articles
                 if item["name"] == "fetch_content":
@@ -727,6 +1171,7 @@ Follow these instructions meticulously and you will consistently produce high-qu
                 response_data = {
                     "summary": item["content"],
                     "articles": full_articles,  # Include the full article content
+                    "cost_analysis": cost_tracker.get_summary(),
                     "debug": {
                         "scraped_articles": scraped_articles if debug else None,
                         "full_articles": full_articles if debug else None
@@ -749,9 +1194,27 @@ Follow these instructions meticulously and you will consistently produce high-qu
                     except Exception as e:
                         print(f"Failed to send final status update: {e}")
 
-                    # Convert response to base64
-                    response_str = json.dumps(response_data)
-                    encoded_response = base64.b64encode(response_str.encode()).decode()
+                    # Extract and clean the newsletter content
+                    newsletter_content = item["content"]
+                    
+                    # Remove markdown code blocks and other formatting that might interfere
+                    newsletter_content = re.sub(r'```html\s*', '', newsletter_content)
+                    newsletter_content = re.sub(r'```\s*', '', newsletter_content)
+                    newsletter_content = re.sub(r'`([^`]*)`', r'\1', newsletter_content)  # Remove inline code
+                    newsletter_content = re.sub(r'\*\*([^*]*)\*\*', r'\1', newsletter_content)  # Remove bold
+                    newsletter_content = re.sub(r'\*([^*]*)\*', r'\1', newsletter_content)  # Remove italic
+                    newsletter_content = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', newsletter_content)  # Remove markdown links, keep text
+                    newsletter_content = re.sub(r'^\s*[-*+]\s+', '', newsletter_content, flags=re.MULTILINE)  # Remove list markers
+                    newsletter_content = re.sub(r'^\s*\d+\.\s+', '', newsletter_content, flags=re.MULTILINE)  # Remove numbered list markers
+                    newsletter_content = re.sub(r'^\s*#+\s+', '', newsletter_content, flags=re.MULTILINE)  # Remove headers
+                    newsletter_content = re.sub(r'^\s*>\s+', '', newsletter_content, flags=re.MULTILINE)  # Remove blockquotes
+                    newsletter_content = re.sub(r'^\s*\|.*\|.*$', '', newsletter_content, flags=re.MULTILINE)  # Remove table rows
+                    newsletter_content = re.sub(r'^\s*[-=]+\s*$', '', newsletter_content, flags=re.MULTILINE)  # Remove horizontal rules
+                    newsletter_content = re.sub(r'\n\s*\n\s*\n', '\n\n', newsletter_content)  # Normalize multiple newlines
+                    newsletter_content = newsletter_content.strip()  # Remove leading/trailing whitespace
+                    
+                    # Convert newsletter content to base64
+                    encoded_response = base64.b64encode(newsletter_content.encode()).decode()
                     
                     # Send to Bubble API
                     bubble_response = requests.post(
@@ -800,3 +1263,15 @@ Follow these instructions meticulously and you will consistently produce high-qu
             print(f"Failed to send timeout status update: {e}")
 
     return JSONResponse(status_code=500, content={"error": f"Failed to generate summary after {max_steps} steps."})
+
+@app.get("/costs", response_class=JSONResponse)
+async def get_cost_analysis():
+    """Get cost analysis for the current session."""
+    return cost_tracker.get_summary()
+
+@app.get("/costs/reset", response_class=JSONResponse)
+async def reset_cost_tracker():
+    """Reset the cost tracker for a new session."""
+    global cost_tracker
+    cost_tracker = CostTracker()
+    return {"message": "Cost tracker reset successfully"}
