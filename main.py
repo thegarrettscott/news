@@ -104,13 +104,38 @@ class CostTracker:
             function_breakdown[function]["cost"] += call["cost"]
             function_breakdown[function]["calls"] += 1
         
+        # Create simplified text breakdown
+        breakdown_lines = []
+        breakdown_lines.append(f"Total Cost: ${self.total_cost:.4f}")
+        breakdown_lines.append(f"Total Calls: {len(self.calls)}")
+        breakdown_lines.append(f"Duration: {int((datetime.now() - self.start_time).total_seconds())} seconds")
+        breakdown_lines.append("")
+        
+        # Provider breakdown
+        breakdown_lines.append("Provider Breakdown:")
+        for provider, data in provider_breakdown.items():
+            breakdown_lines.append(f"  {provider.upper()}: ${data['cost']:.4f} ({data['calls']} calls)")
+        
+        breakdown_lines.append("")
+        
+        # Function breakdown
+        breakdown_lines.append("Function Breakdown:")
+        for function, data in function_breakdown.items():
+            breakdown_lines.append(f"  {function}: ${data['cost']:.4f} ({data['calls']} calls)")
+        
+        breakdown_lines.append("")
+        
+        # Individual calls
+        breakdown_lines.append("Individual Calls:")
+        for i, call in enumerate(self.calls, 1):
+            status = "✓" if call["success"] else "✗"
+            breakdown_lines.append(f"  {i}. {status} {call['function']} ({call['model']}) - ${call['cost']:.4f}")
+            if call["input_tokens"] > 0 or call["output_tokens"] > 0:
+                breakdown_lines.append(f"     Tokens: {call['input_tokens']} input, {call['output_tokens']} output")
+        
         return {
             "total_cost": self.total_cost,
-            "total_calls": len(self.calls),
-            "duration_seconds": (datetime.now() - self.start_time).total_seconds(),
-            "provider_breakdown": provider_breakdown,
-            "function_breakdown": function_breakdown,
-            "calls": self.calls
+            "cost_breakdown": "\n".join(breakdown_lines)
         }
 
 # Global cost tracker instance
@@ -1171,7 +1196,8 @@ Follow these instructions meticulously and you will consistently produce high-qu
                 response_data = {
                     "summary": item["content"],
                     "articles": full_articles,  # Include the full article content
-                    "cost_analysis": cost_tracker.get_summary(),
+                    "total_cost": cost_tracker.get_summary()["total_cost"],
+                    "cost_breakdown": cost_tracker.get_summary()["cost_breakdown"],
                     "debug": {
                         "scraped_articles": scraped_articles if debug else None,
                         "full_articles": full_articles if debug else None
@@ -1267,7 +1293,11 @@ Follow these instructions meticulously and you will consistently produce high-qu
 @app.get("/costs", response_class=JSONResponse)
 async def get_cost_analysis():
     """Get cost analysis for the current session."""
-    return cost_tracker.get_summary()
+    summary = cost_tracker.get_summary()
+    return {
+        "total_cost": summary["total_cost"],
+        "cost_breakdown": summary["cost_breakdown"]
+    }
 
 @app.get("/costs/reset", response_class=JSONResponse)
 async def reset_cost_tracker():
