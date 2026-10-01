@@ -11,7 +11,10 @@ try:
 except ModuleNotFoundError:
     raise ImportError("The 'readability' package requires a working Python SSL module. Run: apt install libssl-dev")
 
+from service_auth import ServiceAuthMiddleware
+
 app = FastAPI()
+app.add_middleware(ServiceAuthMiddleware)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
